@@ -238,11 +238,15 @@ const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [465, 466], box: [0, 0, 
 // Split view (drawer open on a wide screen): images a little smaller, and further above and below the title.
 const SPLIT_IMAGES = { scale: 0.85, raiseTop: 0.04, lowerBottom: 0.05 };
 
+// Portrait screens with the drawer open: images a little bigger, and the bottom ones a little higher (they may overlap the title).
+const MOBILE_IMAGES = { scale: 1.15, raiseBottom: 0.05, gapUnderDrawer: 32 };
+const mobileY = y => (y < 0.5 ? y : y - MOBILE_IMAGES.raiseBottom);
+
 const START_ART = [
   { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3] },
   { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3] },
   { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], belowTitle: true },
-  { ...BOSS,       size: 0.42, at: [0.82, 0.72], belowTitle: true },
+  { ...BOSS,       size: 0.42, at: [0.82, 0.72], belowTitle: true, overlapsTitle: true },
   { ...BEES[0],    size: 0.6,  at: [0.5, 0.13] },
   { ...BEES[3],    size: 0.6,  at: [0.5, 0.87], belowTitle: true },
 ];
@@ -712,7 +716,7 @@ function damageBoss() {
 // Portrait screens with the drawer open: the title sits just under the drawer at full size, and
 // the images below it move down too, keeping their usual positions. startShift is that move.
 function titleTopBelowDrawer() {
-  return drawer.offsetHeight + drawerToggle.offsetHeight + 16;
+  return drawer.offsetHeight + drawerToggle.offsetHeight + MOBILE_IMAGES.gapUnderDrawer;
 }
 function startShift() {
   return titleTopBelowDrawer() - startSign.offsetTop;
@@ -721,7 +725,7 @@ function startShift() {
 function yBelowTitle(y, u) {
   const titleBottom = startSign.offsetTop + startSign.offsetHeight;
   const deepest = Math.max(...screenSprites.filter(item => item.belowTitle).map(
-    ({ at, box, size }) => at[1] * innerHeight + (box[3] - box[1]) * u * size / 2 - titleBottom,
+    ({ at, box, size }) => mobileY(at[1]) * innerHeight + (box[3] - box[1]) * u * size * MOBILE_IMAGES.scale / 2 - titleBottom,
   ));
   const room = innerHeight - (titleBottom + startShift()) - 8;
   return titleBottom + (y * innerHeight - titleBottom) * Math.min(1, room / deepest);
@@ -733,11 +737,24 @@ function layoutScreens() {
   const besideDrawer = startContent.classList.contains('beside-drawer');
   const belowDrawer = startContent.classList.contains('below-drawer');
   const width = besideDrawer ? roomBesideDrawer() : innerWidth; // the images spread across the space left of the drawer
-  for (const { el, box, at: [x, y], belowTitle, size } of screenSprites) {
+  for (const { el, box, at, belowTitle, overlapsTitle, size } of screenSprites) {
+    const x = at[0];
+    const y = belowDrawer ? mobileY(at[1]) : at[1];
+    const zoom = belowDrawer ? MOBILE_IMAGES.scale : besideDrawer ? SPLIT_IMAGES.scale : 1;
+    const height = (box[3] - box[1]) * u * size * zoom;
     el.style.opacity = belowDrawer && !belowTitle ? 0 : '';
-    const splitNudge = y < 0.5 ? -SPLIT_IMAGES.raiseTop : SPLIT_IMAGES.lowerBottom;
-    const screenY = belowDrawer && belowTitle ? yBelowTitle(y, u) : (y + (besideDrawer ? splitNudge : 0)) * innerHeight;
-    place(el, box, x * width, screenY, u * size * (besideDrawer ? SPLIT_IMAGES.scale : 1));
+    let screenY = y * innerHeight;
+    if (belowDrawer && belowTitle) {
+      screenY = yBelowTitle(y, u);
+    } else if (besideDrawer && overlapsTitle) {
+      // Worked out from the title's final size, because it's still animating when this runs.
+      const offCentre = x * width - width / 2;
+      const titleEdge = innerHeight / 2 + TITLE_HEIGHT_EM * splitTitleFont() / 2 - offCentre * Math.sin(3 * Math.PI / 180);
+      screenY = titleEdge + height * 0.3; // the top fifth of the seal sits over the title box
+    } else if (besideDrawer) {
+      screenY = (y + (y < 0.5 ? -SPLIT_IMAGES.raiseTop : SPLIT_IMAGES.lowerBottom)) * innerHeight;
+    }
+    place(el, box, x * width, screenY, u * size * zoom);
   }
 }
 addEventListener('resize', layoutScreens);
@@ -759,8 +776,14 @@ layoutScreens();
 // keep their size; the title box resizes to fill that space (its width is about 20 times its font size).
 const DRAWER_GAP = 24; // the right margin in #drawer.open
 const TITLE_WIDTH_EM = 20;
+const TITLE_HEIGHT_EM = 5.5;
 function roomBesideDrawer() {
   return innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth;
+}
+
+function splitTitleFont() {
+  const normal = Math.min(Math.max(22, Math.min(innerWidth, innerHeight) * 0.055), 64);
+  return Math.min(roomBesideDrawer() * 0.91 / TITLE_WIDTH_EM, normal);
 }
 
 function fitStartBesideDrawer() {
@@ -770,7 +793,7 @@ function fitStartBesideDrawer() {
   startContent.classList.toggle('beside-drawer', beside);
   startContent.classList.toggle('below-drawer', open && portrait);
   startContent.style.right = beside ? `${innerWidth - roomBesideDrawer()}px` : '';
-  startSign.style.fontSize = beside ? `min(${roomBesideDrawer() * 0.91 / TITLE_WIDTH_EM}px, clamp(22px, 5.5vmin, 64px))` : '';
+  startSign.style.fontSize = beside ? `${splitTitleFont()}px` : '';
   startContent.style.transform = open && portrait ? `translateY(${startShift()}px)` : '';
   layoutScreens();
 }
