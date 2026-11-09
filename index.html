@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ultrapremium Honey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Redaction+70&display=swap">
+<style>
+  html, body { height: 100%; margin: 0; background: #000; }
+  body { overflow: hidden; cursor: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+  /* 5:4 like the art, 88% of the window height: leaves 6% of space above and below. */
+  #stage { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(110vh, 100vw); aspect-ratio: 5 / 4; overflow: hidden; }
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .sprite { position: absolute; left: 0; top: 0; overflow: hidden; pointer-events: none; will-change: transform; }
+  .sprite img { position: absolute; display: block; max-width: none; }
+  /* Centred in the empty bands either side of the stage, below the bee lives at the top left. */
+  #misses { left: 0; }
+  #hits { right: 0; }
+  .counter {
+    position: fixed; top: 14vh; z-index: 16; width: max((100vw - min(110vh, 100vw)) / 2, 110px);
+    text-align: center; line-height: 1.1; pointer-events: none;
+    font-family: "Redaction 70", Georgia, serif; font-size: clamp(22px, 5.5vmin, 64px); color: #ffd23f;
+  }
+  .counter div { font-size: 0.6em; letter-spacing: 0.06em; }
+  .counter output { display: block; font-size: 1.6em; color: #ff6a13; }
+  #hits, #hits output { color: #39ff6a; }
+  #controls { position: fixed; top: 3vh; left: 50%; transform: translate(-50%, -50%); z-index: 16; display: flex; gap: 8px; }
+  #controls[hidden] { display: none; }
+  #controls button {
+    display: block; padding: 0.2em 0.6em; font-size: clamp(14px, 2.4vh, 22px);
+    color: #ffd23f; background: none; border: 0; border-radius: 5px; cursor: none;
+  }
+  #controls button[hidden] { display: none; }
+  #controls button:hover { color: #120a00; background: #ffd23f; }
+  #controls svg { display: block; width: 1.2em; height: 1.2em; fill: currentColor; }
+  #paused { position: fixed; inset: 0; z-index: 14; display: grid; place-items: center; background: #0009; pointer-events: none; }
+  #paused[hidden] { display: none; }
+  #flash, #hurt { position: fixed; inset: 0; z-index: 12; opacity: 0; pointer-events: none; }
+  #flash { background: #c9a81e; }
+  #hurt { background: #d0101a; }
+  .screen { position: fixed; inset: 0; z-index: 15; background: #000; display: grid; place-items: center; overflow: hidden; }
+  .screen[hidden] { display: none; }
+  #start { z-index: 17; } /* above the counters and lives */
+  #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
+  .social { position: absolute; top: 2vh; z-index: 2; cursor: none; }
+  #socials-right img { display: block; height: 100%; }
+  #socials-right { display: block; top: auto; bottom: 2vh; right: 2vh; height: 12vh; z-index: 18; } /* on every screen */
+  /* Same box as the stage, so the art keeps its proportions. */
+  #over-bg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(110vh, 100vw); aspect-ratio: 5 / 4; }
+  /* Shifted to the opposite side from the art that expands from a corner, so both stay visible. */
+  @media (min-aspect-ratio: 1/1) {
+    #gameover .sign { translate: calc(min(110vh, 100vw) * -0.2) 0; }
+    #gameover.art-left .sign { translate: calc(min(110vh, 100vw) * 0.2) 0; }
+  }
+  .sign {
+    position: relative; z-index: 1; padding: 0.5em 0.9em; text-align: center; rotate: -3deg;
+    font-family: Impact, "Arial Black", sans-serif; font-size: clamp(22px, 5.5vmin, 64px);
+    background: #120a00; border: 0.14em solid #ff9a1a; border-radius: 5px;
+    box-shadow: 0 0 0.9em #ff9a1a88;
+  }
+  .sign h1 { margin: 0 0 0.25em; font-weight: 400; letter-spacing: 0.04em; line-height: 1.1; color: #ff6a13; font-size: 1.9em; }
+  .sign p { margin: 0; font-family: "Redaction 70", Georgia, serif; color: #ffd23f; }
+  .sign .results { margin-bottom: 0.7em; font-size: 0.8em; }
+  .sign button {
+    padding: 0.2em 0.9em; font: inherit; letter-spacing: 0.04em; color: #120a00; background: #ffd23f;
+    border: 0; border-radius: 5px; cursor: none;
+  }
+  .sign button:hover { background: #ff9a1a; }
+  .sign button + button { margin-left: 0.4em; }
+</style>
+</head>
+<body>
+<!-- A dead bee's life icon: a red ring traced around its shape, with the bee itself removed.
+     The radius is in the sprite's own pixels, which are scaled down to about a fifth on screen. -->
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <filter id="red-outline">
+    <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="grown"/>
+    <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring"/>
+    <feFlood flood-color="#ff2a2a"/>
+    <feComposite in2="ring" operator="in"/>
+  </filter>
+</svg>
+<div id="stage">
+  <video id="bg" src="assets/Background.mp4" autoplay muted loop playsinline></video>
+</div>
+<div id="misses" class="counter"><div>MISSES</div><output id="miss-count">0</output></div>
+<div id="hits" class="counter"><div>HITS</div><output id="hit-count">0</output></div>
+<div id="flash"></div>
+<div id="hurt"></div>
+<div id="controls" hidden>
+  <button type="button" aria-label="Home" onclick="location.reload()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></button>
+  <button id="pause" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="pause-icon" d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></button>
+  <button type="button" aria-label="Restart" onclick="restartGame()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+</div>
+<div id="paused" hidden><div class="sign"><h1>PAUSED</h1></div></div>
+<a id="socials-right" class="social" href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">
+  <img src="socials/rotate.gif" alt="Casual Terrorist on Instagram" draggable="false">
+</a>
+<div id="start" class="screen">
+  <div class="sign">
+    <h1>ULTRAPREMIUM HONEY</h1>
+    <button id="start-button" type="button">START</button>
+  </div>
+</div>
+<div id="gameover" class="screen" role="status" hidden>
+  <video id="over-bg" src="assets/game_over_bg.mp4" muted loop playsinline preload="auto"></video>
+  <div class="sign">
+    <h1>GAME OVER</h1>
+    <p class="results"></p>
+    <button type="button" onclick="restartGame()">RESTART</button>
+    <button type="button" onclick="location.reload()">HOME</button>
+  </div>
+</div>
+
+<script>
+// Art is authored on a 1350x1080 canvas; everything scales with the background.
+const ART_W = 1350, ART_H = 1080;
+
+// box = [left, top, right, bottom] of the visible art inside each GIF's frame.
+const SPECIES = [
+  { src: 'assets/seal_2_1.gif',     frame: [1350, 1080], box: [673, 372, 876, 725],  sizes: [0.4, 0.56] },
+  { src: 'assets/seal_3.gif',       frame: [1350, 1080], box: [250, 191, 564, 618],  sizes: [0.35, 0.49] },
+  { src: 'assets/seal_4_sting.gif', frame: [1350, 1080], box: [359, 503, 625, 795],  sizes: [0.4, 0.56] },
+];
+
+// Nothing escapes before graceSeconds; the seals due by then leave across the next graceSpread seconds.
+const SEAL_ROUND = {
+  total: 15, lifeSeconds: 4, graceSeconds: 6, graceSpread: 3, minGap: 0.5, maxGap: 1.6, maxOnScreen: 6,
+  fastChance: 0.3, fastSpeed: 2.5, startMin: 5, startMax: 9,
+};
+const STING = { src: 'assets/Sting.gif', frame: [1080, 1080], box: [402, 314, 478, 429], size: 2.8, ms: 1200 };
+
+// One bee per life; sizes even out their different art widths.
+const BEES = [
+  { src: 'assets/bee_1_0.gif', frame: [1350, 1080], box: [587, 379, 852, 687],  size: 0.35 },
+  { src: 'assets/bee_2_0.gif', frame: [1350, 1080], box: [828, 224, 1046, 453], size: 0.42 },
+  { src: 'assets/bee_3_0.gif', frame: [1350, 1080], box: [930, 536, 1132, 793], size: 0.45 },
+  { src: 'assets/bee_4_0.gif', frame: [1350, 1080], box: [99, 710, 310, 895],   size: 0.44 },
+];
+const LIVES = { hitsPerBee: 2, hitProtectionSeconds: 0.4, invulnerableSeconds: 1.2, endDelay: 900 };
+const BEE_SPLAT = { src: 'assets/HoneySplosion.gif', frame: [1350, 1080], box: [402, 410, 708, 692], size: 0.5, ms: 1300 };
+
+// speed and hitRadius are in art pixels. Gaps are seconds between shots.
+const SHOT = {
+  src: 'assets/sting-swell.gif', frame: [1080, 1080], box: [198, 256, 359, 381], size: 0.4,
+  speed: 500, hitRadius: 60, firstDelay: 1.5, sealGap: [0.7, 1.9], bossGap: [0.3, 0.7],
+};
+
+// Two drops fall inside this GIF; `at` is each copy's centre in art coordinates, roughly under the hooks.
+const DRIP = { src: 'assets/bloneydrip.gif', frame: [1305, 1080], box: [218, 279, 487, 983] };
+const DRIPS = [
+  { at: [280, 591], delay: 0 },
+  { at: [627, 591], delay: 800 },
+  { at: [975, 591], delay: 1500 },
+];
+
+const BOSS = {
+  src: 'assets/BIGSEAL.gif', frame: [1350, 1080], box: [722, 42, 1207, 875],
+  size: 1.1, hits: 10, delay: 900, dropSeconds: 1,
+};
+// The bag the seals are guarding: scenery in the boss round, hanging in the top right.
+const TARGET = { src: 'assets/ultrapremium.gif', frame: [1080, 1080], box: [0, 0, 1080, 884], size: 0.32 };
+// The art in a corner of each end screen. With a `size` it grows from that to `endSize`.
+const WIN_ART = { ...TARGET, endSize: 0.85 };
+const LOSS_ART = { src: 'assets/HiveBreak.gif', frame: [1350, 1080], box: [282, 181, 1003, 979], endSize: 0.68, side: 'left', fallMs: 1600 };
+const LOSS_SPLAT = { src: 'assets/SPLATBealFrame2.gif', frame: [1350, 1080], box: [425, 584, 1061, 1046], size: 0.7, ms: 1000 };
+const GROW_TIMING = { duration: 900, easing: 'cubic-bezier(0.2, 1.2, 0.4, 1)' };
+const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [1080, 1080], box: [365, 61, 830, 527], size: 1.6, ms: 1000 };
+
+// `at` is [x, y] as fractions of the window.
+const START_ART = [
+  { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3] },
+  { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3] },
+  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75] },
+  { ...BOSS,       size: 0.42, at: [0.82, 0.72] },
+  { ...BEES[0],    size: 0.6,  at: [0.5, 0.13] },
+  { ...BEES[3],    size: 0.6,  at: [0.5, 0.87] },
+];
+
+const stage = document.getElementById('stage');
+let stageW, stageH, stageLeft, stageTop, scale;
+function measure() {
+  stageW = stage.clientWidth;
+  stageH = stage.clientHeight;
+  const rect = stage.getBoundingClientRect();
+  stageLeft = rect.left;
+  stageTop = rect.top;
+  scale = stageW / ART_W;
+}
+measure();
+addEventListener('resize', measure);
+
+// A clipped window onto the visible part of a GIF, so a sprite's position is its real centre.
+function makeSprite({ frame, box }, src) {
+  const el = document.createElement('div');
+  el.className = 'sprite';
+  el.style.width = box[2] - box[0] + 'px';
+  el.style.height = box[3] - box[1] + 'px';
+  const img = new Image(frame[0], frame[1]);
+  img.alt = '';
+  img.draggable = false;
+  img.style.left = -box[0] + 'px';
+  img.style.top = -box[1] + 'px';
+  img.src = src;
+  el.append(img);
+  return { el, img };
+}
+
+function place(el, box, cx, cy, s, deg = 0) {
+  const x = cx - (box[2] - box[0]) / 2;
+  const y = cy - (box[3] - box[1]) / 2;
+  el.style.transform = `translate(${x}px, ${y}px) rotate(${deg}deg) scale(${s})`;
+}
+
+// Plays a non-looping effect from its first frame, then removes it.
+// Each needs its own URL: browsers share one animation clock per GIF URL,
+// so reusing it would start the effect partway through.
+let effectId = 0;
+function playEffect(item, parent, x, y, s, ms, zIndex) {
+  const { el, img } = makeSprite(item, `${item.src}?${++effectId}`);
+  el.style.zIndex = zIndex;
+  place(el, item.box, x, y, s);
+  parent.append(el);
+  img.onload = () => setTimeout(() => el.remove(), ms);
+  img.onerror = () => el.remove();
+}
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = list => list[Math.floor(Math.random() * list.length)];
+
+let running = false;
+let paused = false;
+let ended = false; // the outcome is decided; the end screen is on its way
+let gameTime = 0;
+
+// Delays that run on game time, so nothing happens while paused.
+const timers = [];
+function after(ms, fn) {
+  timers.push({ left: ms, fn });
+}
+
+const seals = [];
+let spawned = 0;
+let resolved = 0; // seals that have been hit or have escaped
+let bossBeaten = false;
+let nextSpawn = 0.3;
+
+function spawnSeal() {
+  spawned++;
+  const species = pick(SPECIES);
+  const { el } = makeSprite(species, species.src);
+  stage.append(el);
+  el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250 });
+  const angle = rand(0, Math.PI * 2);
+  const speed = rand(35, 80) * (Math.random() < SEAL_ROUND.fastChance ? SEAL_ROUND.fastSpeed : 1);
+  seals.push({
+    species, el,
+    size: pick(species.sizes),
+    dying: false,
+    expires: Math.max(gameTime + SEAL_ROUND.lifeSeconds, SEAL_ROUND.graceSeconds + rand(0, SEAL_ROUND.graceSpread)),
+    x: rand(0.15, 0.85) * stageW,
+    y: rand(0.15, 0.85) * stageH,
+    drawY: 0,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    bobAmp: rand(10, 26),
+    bobRate: rand(0.6, 1.2),
+    tiltAmp: rand(3, 8),
+    phase: rand(0, Math.PI * 2),
+  });
+}
+
+function removeSeal(seal) {
+  seal.el.remove();
+  seals.splice(seals.indexOf(seal), 1);
+}
+
+function fadeSeal(seal) {
+  seal.dying = true;
+  seal.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).onfinish = () => removeSeal(seal);
+}
+
+function resolveSeal() {
+  resolved++;
+  if (resolved === SEAL_ROUND.total) after(BOSS.delay, spawnBoss);
+}
+
+// Staggered, with unique URLs, so the copies don't all fall in step.
+// Inserted right after the video, which keeps them behind the seals.
+const drips = [];
+function layoutDrips() {
+  for (const { el, at } of drips) place(el, DRIP.box, at[0] * scale, at[1] * scale, scale);
+}
+addEventListener('resize', layoutDrips);
+DRIPS.forEach(({ at, delay }, i) => setTimeout(() => {
+  const { el } = makeSprite(DRIP, `${DRIP.src}?${i}`);
+  document.getElementById('bg').after(el);
+  drips.push({ el, at });
+  layoutDrips();
+}, delay));
+
+let boss = null;
+
+// The current bee is the pointer, drawn as a sprite because browsers don't animate GIF cursors.
+const bees = BEES.map(item => {
+  const { el } = makeSprite(item, item.src);
+  el.style.zIndex = 20;
+  el.style.visibility = 'hidden';
+  document.body.append(el);
+  return { ...item, el };
+});
+let beeIndex = 0;
+let invulnerable = 0; // seconds of protection left after losing a life
+const pointer = { x: 0, y: 0, inside: false };
+function showBee() {
+  bees.forEach(({ el }, i) => {
+    el.style.visibility = pointer.inside && i === beeIndex ? 'visible' : 'hidden';
+  });
+}
+
+// One small bee per remaining life, at the top of the left band.
+const lifeIcons = BEES.map(item => {
+  const { el } = makeSprite(item, item.src);
+  el.style.zIndex = 16;
+  document.body.append(el);
+  return { ...item, el };
+});
+function layoutLives() {
+  const band = Math.max((innerWidth - stageW) / 2, 110);
+  const spacing = Math.min(band / 4, 64);
+  lifeIcons.forEach(({ el, box, size }, i) => {
+    place(el, box, band / 2 + (i - 1.5) * spacing, innerHeight * 0.07, scale * size * 0.7);
+  });
+}
+addEventListener('resize', layoutLives);
+layoutLives();
+
+const hurtFlash = document.getElementById('hurt');
+// Sepia gives a single colour for hue-rotate to shift to red; both filters need matching lists to animate.
+const BEE_RED = { filter: 'brightness(0.7) sepia(1) saturate(8) hue-rotate(-33deg) drop-shadow(0 0 40px #ff2a00)' };
+const BEE_NORMAL = { filter: 'brightness(1) sepia(0) saturate(1) hue-rotate(0deg) drop-shadow(0 0 0 transparent)' };
+let beeDamage = 0;
+
+function hitBee() {
+  invulnerable = LIVES.hitProtectionSeconds;
+  hurtFlash.animate([{ opacity: 0.5 }, { opacity: 0 }], { duration: 300, easing: 'ease-out' });
+  bees[beeIndex].el.animate([BEE_RED, BEE_NORMAL, BEE_RED, BEE_NORMAL], { duration: 400 });
+  beeDamage++;
+  if (beeDamage === LIVES.hitsPerBee) {
+    beeDamage = 0;
+    loseLife();
+  }
+}
+
+function loseLife() {
+  invulnerable = LIVES.invulnerableSeconds;
+  playEffect(BEE_SPLAT, document.body, pointer.x, pointer.y, scale * BEE_SPLAT.size, BEE_SPLAT.ms, 11);
+  lifeIcons[beeIndex].el.style.filter = 'url(#red-outline)';
+  beeIndex++;
+  if (beeIndex === bees.length) {
+    ended = true;
+    after(LIVES.endDelay, showGameOver);
+  } else {
+    bees[beeIndex].el.animate(
+      [{ opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }],
+      { duration: LIVES.invulnerableSeconds * 250, iterations: 4 },
+    );
+  }
+  showBee();
+}
+
+const shots = [];
+let nextShot = SHOT.firstDelay;
+
+function fireShot(fromX, fromY) {
+  // Aimed at where the bee is now, so it can be dodged.
+  const targetX = Math.min(Math.max(pointer.x - stageLeft, 0), stageW);
+  const targetY = Math.min(Math.max(pointer.y - stageTop, 0), stageH);
+  const distance = Math.hypot(targetX - fromX, targetY - fromY) || 1;
+  const { el } = makeSprite(SHOT, SHOT.src);
+  stage.append(el);
+  shots.push({
+    el,
+    x: fromX,
+    y: fromY,
+    vx: (targetX - fromX) / distance * SHOT.speed,
+    vy: (targetY - fromY) / distance * SHOT.speed,
+  });
+  place(el, SHOT.box, fromX, fromY, scale * SHOT.size);
+}
+
+function updateShooting(dt) {
+  nextShot -= dt;
+  if (nextShot > 0 || ended || !pointer.inside) return;
+  if (boss && !boss.dead && boss.drop === 1) {
+    fireShot(boss.x, boss.y);
+    nextShot = rand(...SHOT.bossGap);
+    return;
+  }
+  // A single seal picked at random, so most of them aren't shooting at any moment.
+  const shooter = pick(seals.filter(s => !s.dying));
+  if (shooter) fireShot(shooter.x, shooter.drawY);
+  nextShot = rand(...SHOT.sealGap);
+}
+
+function updateShots(dt) {
+  const hitRadius = SHOT.hitRadius * scale;
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const shot = shots[i];
+    shot.x += shot.vx * dt * scale;
+    shot.y += shot.vy * dt * scale;
+    place(shot.el, SHOT.box, shot.x, shot.y, scale * SHOT.size);
+
+    const offStage = shot.x < 0 || shot.x > stageW || shot.y < 0 || shot.y > stageH;
+    const hitsBee = !ended && invulnerable <= 0 && pointer.inside
+      && Math.hypot(shot.x - (pointer.x - stageLeft), shot.y - (pointer.y - stageTop)) < hitRadius;
+    if (offStage || hitsBee) {
+      shot.el.remove();
+      shots.splice(i, 1);
+    }
+    if (hitsBee) hitBee();
+  }
+}
+
+function stepGame(dt, t) {
+  for (let i = timers.length - 1; i >= 0; i--) {
+    timers[i].left -= dt * 1000;
+    if (timers[i].left <= 0) timers.splice(i, 1)[0].fn();
+  }
+  invulnerable = Math.max(0, invulnerable - dt);
+
+  nextSpawn -= dt;
+  if (nextSpawn <= 0 && spawned < SEAL_ROUND.total) {
+    nextSpawn = rand(SEAL_ROUND.minGap, SEAL_ROUND.maxGap);
+    if (seals.filter(s => !s.dying).length < SEAL_ROUND.maxOnScreen) spawnSeal();
+  }
+
+  for (const seal of seals) {
+    if (!seal.dying && t >= seal.expires) {
+      fadeSeal(seal);
+      missCount.textContent = ++misses; // a miss is a seal that got away
+      resolveSeal();
+    }
+
+    const { species: { box }, size } = seal;
+    const s = scale * size;
+    const halfW = (box[2] - box[0]) * s / 2;
+    const halfH = (box[3] - box[1]) * s / 2;
+
+    seal.x += seal.vx * dt * scale;
+    seal.y += seal.vy * dt * scale;
+
+    // Bounce off the edges, and pull back in if a resize left the seal outside.
+    if (seal.x < halfW) { seal.x = Math.min(halfW, stageW / 2); seal.vx = Math.abs(seal.vx); }
+    if (seal.x > stageW - halfW) { seal.x = Math.max(stageW - halfW, stageW / 2); seal.vx = -Math.abs(seal.vx); }
+    if (seal.y < halfH) { seal.y = Math.min(halfH, stageH / 2); seal.vy = Math.abs(seal.vy); }
+    if (seal.y > stageH - halfH) { seal.y = Math.max(stageH - halfH, stageH / 2); seal.vy = -Math.abs(seal.vy); }
+
+    const wave = t * seal.bobRate + seal.phase;
+    seal.drawY = seal.y + Math.sin(wave * 2) * seal.bobAmp * scale;
+    place(seal.el, box, seal.x, seal.drawY, s, Math.sin(wave) * seal.tiltAmp);
+  }
+
+  if (boss) {
+    boss.drop = Math.min(1, boss.drop + dt / BOSS.dropSeconds);
+    const entering = (1 - boss.drop) ** 3; // 1 just above the picture, 0 once in place
+    const s = scale * BOSS.size;
+    const height = (BOSS.box[3] - BOSS.box[1]) * s;
+    boss.x = stageW / 2 + Math.sin(t * 0.7) * stageW * 0.28;
+    boss.y = stageH * 0.5 + Math.sin(t * 1.1) * stageH * 0.05 - entering * (stageH * 0.5 + height);
+    place(boss.el, BOSS.box, boss.x, boss.y, s);
+
+    const targetS = scale * TARGET.size;
+    const targetW = (TARGET.box[2] - TARGET.box[0]) * targetS;
+    const targetH = (TARGET.box[3] - TARGET.box[1]) * targetS;
+    place(boss.target, TARGET.box, stageW - targetW / 2, targetH / 2 - entering * targetH, targetS);
+  }
+
+  updateShooting(dt);
+  updateShots(dt);
+}
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (running && !paused) {
+    gameTime += dt;
+    stepGame(dt, gameTime);
+  }
+  const bee = bees[beeIndex];
+  if (bee) place(bee.el, bee.box, pointer.x, pointer.y, scale * bee.size);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function movePointer(e) {
+  pointer.x = e.clientX;
+  pointer.y = e.clientY;
+  if (!pointer.inside) {
+    pointer.inside = true;
+    showBee();
+  }
+}
+addEventListener('pointermove', movePointer);
+document.documentElement.addEventListener('pointerleave', () => {
+  pointer.inside = false;
+  showBee();
+});
+
+// Seals are roughly oval, so an ellipse inside the art's bounds is a close hit area.
+function inEllipse(x, y, cx, cy, rx, ry) {
+  return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+}
+
+// Searches from the end because later seals are drawn on top.
+function sealAt(x, y) {
+  return seals.findLast(({ species: { box }, size, x: sealX, drawY, dying }) => {
+    if (dying) return false;
+    const s = scale * size;
+    const rx = (box[2] - box[0]) * s / 2;
+    const ry = (box[3] - box[1]) * s / 2;
+    return inEllipse(x, y, sealX, drawY, rx, ry);
+  });
+}
+
+function isOnBoss(x, y) {
+  if (!boss || boss.dead) return false;
+  const s = scale * BOSS.size;
+  const { box } = BOSS;
+  return inEllipse(x, y, boss.x, boss.y, (box[2] - box[0]) * s / 2, (box[3] - box[1]) * s / 2);
+}
+
+// Blur radii are in the sprite's own pixels, which are scaled down to roughly a quarter on screen.
+const GLOW_YELLOW = 'brightness(2.5) drop-shadow(0 0 40px #ffd23f) drop-shadow(0 0 90px #ffd23f)';
+const GLOW_RED = 'brightness(1.3) drop-shadow(0 0 40px #ff2a00) drop-shadow(0 0 90px #ff2a00)';
+const FLASH_OUT = [
+  { filter: GLOW_YELLOW },
+  { filter: GLOW_RED },
+  { filter: GLOW_YELLOW },
+  { filter: GLOW_RED },
+  { filter: GLOW_YELLOW },
+  { filter: GLOW_RED },
+  { filter: GLOW_YELLOW, opacity: 1 },
+  { filter: GLOW_YELLOW, opacity: 0 },
+];
+
+function popSeal(seal) {
+  seal.dying = true;
+  seal.el.animate(FLASH_OUT, { duration: 420 }).onfinish = () => removeSeal(seal);
+  resolveSeal();
+}
+
+function spawnBoss() {
+  const target = makeSprite(TARGET, TARGET.src).el;
+  stage.append(target);
+  const { el } = makeSprite(BOSS, BOSS.src);
+  stage.append(el);
+  boss = { el, target, x: 0, y: 0, drop: 0, hits: 0, dead: false };
+}
+
+// Both filters need matching lists to animate.
+const PLAIN = {
+  filter: 'brightness(1) drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent)',
+  opacity: 1,
+};
+function bossFlash(progress) {
+  const brightness = 1.1 - 0.65 * progress ** 2; // squared so the darkening lands on the final hits
+  return {
+    filter: `brightness(${brightness}) drop-shadow(0 0 15px #ffcc00) drop-shadow(0 0 35px #ffcc00) drop-shadow(0 0 70px #ffcc00)`,
+    opacity: 0.55 + 0.3 * progress, // see-through early on, more solid so the dark final hits read
+  };
+}
+
+function damageBoss() {
+  boss.hits++;
+  const hit = bossFlash((boss.hits - 1) / (BOSS.hits - 1));
+  if (boss.hits < BOSS.hits) {
+    boss.el.animate([hit, PLAIN, hit, PLAIN], { duration: 300 });
+    return;
+  }
+  boss.dead = true;
+  bossBeaten = true;
+  ended = true;
+  playEffect(FINAL_BLOW, stage, boss.x, boss.y, scale * FINAL_BLOW.size, FINAL_BLOW.ms, 5);
+  boss.el.animate([hit, PLAIN, hit, { ...hit, opacity: 0 }], { duration: 500 }).onfinish = () => {
+    boss.el.remove();
+    boss = null;
+  };
+  after(FINAL_BLOW.ms + 400, showWin);
+}
+
+const screenSprites = [];
+function layoutScreens() {
+  const u = Math.min(innerWidth / ART_W, innerHeight / ART_H);
+  for (const { el, box, at, size } of screenSprites) {
+    place(el, box, at[0] * innerWidth, at[1] * innerHeight, u * size);
+  }
+}
+addEventListener('resize', layoutScreens);
+
+const pauseButton = document.getElementById('pause');
+const pausedBanner = document.getElementById('paused');
+const startScreen = document.getElementById('start');
+
+for (const item of START_ART) {
+  const { el } = makeSprite(item, item.src);
+  startScreen.append(el);
+  screenSprites.push({ ...item, el });
+}
+layoutScreens();
+
+function startGame() {
+  screenSprites.splice(0).forEach(({ el }) => el.remove());
+  startScreen.hidden = true;
+  document.getElementById('controls').hidden = false;
+  const opening = SEAL_ROUND.startMin + Math.floor(Math.random() * (SEAL_ROUND.startMax - SEAL_ROUND.startMin + 1));
+  for (let i = 0; i < opening; i++) spawnSeal();
+  running = true;
+}
+document.getElementById('start-button').addEventListener('click', startGame);
+
+// A reload always lands on the start screen, so Restart leaves a note to skip it.
+const SKIP_START_KEY = 'ultrapremium-skip-start';
+function restartGame() {
+  try { sessionStorage.setItem(SKIP_START_KEY, '1'); } catch { /* storage blocked: falls back to the start screen */ }
+  location.reload();
+}
+
+pauseButton.addEventListener('click', () => {
+  paused = !paused;
+  pauseButton.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+  document.getElementById('pause-icon').setAttribute('d', paused ? 'M7 4l13 8-13 8z' : 'M6 4h4v16H6zM14 4h4v16h-4z');
+  pausedBanner.hidden = !paused;
+  document.getAnimations().forEach(animation => (paused ? animation.pause() : animation.play()));
+  const video = document.getElementById('bg');
+  if (paused) video.pause();
+  else video.play();
+});
+
+// Pins the art's top corner to the stage's top-left or top-right, whatever its size.
+// `drop` lowers it by a fraction of the stage's height.
+function placeInCorner(el, { box, side }, size, drop = 0) {
+  const s = scale * size;
+  const halfW = (box[2] - box[0]) * s / 2;
+  const x = side === 'left' ? stageLeft + halfW : stageLeft + stageW - halfW;
+  place(el, box, x, stageTop + (box[3] - box[1]) * s / 2 + drop * stageH, s);
+  return el.style.transform;
+}
+
+// Both endings share one screen: the scene behind, a sign, and art growing out of a top corner.
+function showEndScreen(title, art) {
+  running = false;
+  pauseButton.hidden = true;
+  if (beeIndex >= bees.length) beeIndex = 0; // the Restart button still needs a pointer
+  showBee();
+
+  const screen = document.getElementById('gameover');
+  screen.querySelector('h1').textContent = title;
+  screen.querySelector('.results').textContent =
+    `${hits} ${hits === 1 ? 'hit' : 'hits'}, ${misses} ${misses === 1 ? 'miss' : 'misses'}`;
+  screen.hidden = false;
+  document.getElementById('bg').pause();
+  document.getElementById('over-bg').play();
+
+  const { el } = makeSprite(art, art.src);
+  screen.append(el);
+  screen.classList.toggle('art-left', art.side === 'left');
+  if (art.size) {
+    const from = placeInCorner(el, art, art.size);
+    const to = placeInCorner(el, art, art.endSize);
+    el.animate([{ transform: from }, { transform: to }], GROW_TIMING);
+  } else {
+    placeInCorner(el, art, art.endSize); // no size to grow from: it just appears
+  }
+  addEventListener('resize', () => placeInCorner(el, art, art.endSize));
+  return el;
+}
+
+function showGameOver() {
+  const hive = showEndScreen('GAME OVER', LOSS_ART);
+  const screen = document.getElementById('gameover');
+  const { box, endSize, fallMs } = LOSS_ART;
+  let splat = null;
+
+  function placeSplat() {
+    if (!splat) return;
+    const { box: splatBox, size: splatSize } = LOSS_SPLAT;
+    const s = scale * splatSize;
+    place(splat, splatBox, stageLeft + (splatBox[2] - splatBox[0]) * s / 2, stageTop + stageH - (splatBox[3] - splatBox[1]) * s / 2, s);
+  }
+  addEventListener('resize', placeSplat);
+
+  // Its own URL each time, so the GIF plays from its first frame.
+  function showSplat(onDone) {
+    const sprite = makeSprite(LOSS_SPLAT, `${LOSS_SPLAT.src}?${++effectId}`);
+    splat = sprite.el;
+    screen.append(splat); // in front of the hive
+    placeSplat();
+    sprite.img.onload = () => setTimeout(onDone, LOSS_SPLAT.ms);
+    sprite.img.onerror = onDone;
+  }
+
+  function fall() {
+    const hiveHeight = (box[3] - box[1]) * scale * endSize;
+    const start = placeInCorner(hive, LOSS_ART, endSize);
+    const end = placeInCorner(hive, LOSS_ART, endSize, 1 - hiveHeight / stageH);
+
+    // How far through the fall the hive's bottom edge meets the sign's bottom edge.
+    const signBottom = screen.querySelector('.sign').getBoundingClientRect().bottom;
+    const progress = Math.min(Math.max((signBottom - (stageTop + hiveHeight)) / (stageH - hiveHeight), 0), 1);
+
+    // The cycle restarts once the hive has landed and the splat has finished.
+    let waitingFor = 2;
+    const finished = () => {
+      waitingFor--;
+      if (waitingFor === 0) restart();
+    };
+    setTimeout(() => showSplat(finished), fallMs * progress);
+    hive.animate([{ transform: start }, { transform: end }], { duration: fallMs }).onfinish = () => {
+      hive.style.visibility = 'hidden';
+      finished();
+    };
+  }
+
+  function restart() {
+    splat.remove();
+    splat = null;
+    hive.style.visibility = 'visible';
+    fall();
+  }
+
+  fall();
+}
+
+function showWin() {
+  showEndScreen('YOU WIN', WIN_ART);
+}
+
+const flash = document.getElementById('flash');
+const hitCount = document.getElementById('hit-count');
+const missCount = document.getElementById('miss-count');
+let hits = 0;
+let misses = 0;
+
+addEventListener('pointerdown', e => {
+  movePointer(e);
+  if (!running || paused || ended || e.target.closest('button')) return;
+  const x = e.clientX - stageLeft;
+  const y = e.clientY - stageTop;
+  const seal = sealAt(x, y);
+  const onBoss = !seal && isOnBoss(x, y);
+  if (!seal && !onBoss) return;
+
+  if (seal) {
+    popSeal(seal);
+    hitCount.textContent = ++hits;
+  } else {
+    damageBoss();
+  }
+  flash.animate([{ opacity: 0.45 }, { opacity: 0 }], { duration: 300, easing: 'ease-out' });
+
+  // The final blow on the boss shows the SealBomb instead.
+  if (!bossBeaten) playEffect(STING, document.body, e.clientX, e.clientY, scale * STING.size, STING.ms, 10);
+});
+
+try {
+  if (sessionStorage.getItem(SKIP_START_KEY)) {
+    sessionStorage.removeItem(SKIP_START_KEY);
+    startGame();
+  }
+} catch { /* storage blocked: stay on the start screen */ }
+</script>
+</body>
+</html>
