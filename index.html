@@ -44,9 +44,6 @@
   .screen[hidden] { display: none; }
   #start { z-index: 17; } /* above the counters and lives */
   #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
-  .social { position: absolute; top: 2vh; z-index: 2; cursor: none; }
-  #socials-right img { display: block; height: 100%; }
-  #socials-right { display: block; top: auto; bottom: 2vh; right: 2vh; height: 12vh; z-index: 18; } /* on every screen */
   /* Same box as the stage, so the art keeps its proportions. */
   #over-bg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(110vh, 100vw); aspect-ratio: 5 / 4; }
   /* Shifted to the opposite side from the art that expands from a corner, so both stay visible. */
@@ -61,6 +58,7 @@
     box-shadow: 0 0 0.9em #ff9a1a88;
   }
   .sign h1 { margin: 0 0 0.25em; font-weight: 400; letter-spacing: 0.04em; line-height: 1.1; color: #ff6a13; font-size: 1.9em; }
+  .sign h1 a { color: inherit; text-decoration: none; cursor: none; }
   .sign p { margin: 0; font-family: "Redaction 70", Georgia, serif; color: #ffd23f; }
   .sign .results { margin-bottom: 0.7em; font-size: 0.8em; }
   .sign button {
@@ -95,12 +93,9 @@
   <button type="button" aria-label="Restart" onclick="restartGame()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
 </div>
 <div id="paused" hidden><div class="sign"><h1>PAUSED</h1></div></div>
-<a id="socials-right" class="social" href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">
-  <img src="socials/rotate.gif" alt="Casual Terrorist on Instagram" draggable="false">
-</a>
 <div id="start" class="screen">
   <div class="sign">
-    <h1>ULTRAPREMIUM HONEY</h1>
+    <h1><a href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">ULTRAPREMIUM HONEY</a></h1>
     <button id="start-button" type="button">START</button>
   </div>
 </div>
@@ -143,10 +138,13 @@ const LIVES = { hitsPerBee: 2, hitProtectionSeconds: 0.4, invulnerableSeconds: 1
 const BEE_SPLAT = { src: 'assets/HoneySplosion.gif', frame: [1350, 1080], box: [402, 410, 708, 692], size: 0.5, ms: 1300 };
 
 // speed and hitRadius are in art pixels. Gaps are seconds between shots.
-const SHOT = {
-  src: 'assets/sting-swell.gif', frame: [1080, 1080], box: [198, 256, 359, 381], size: 0.4,
-  speed: 500, hitRadius: 60, firstDelay: 1.5, sealGap: [0.7, 1.9], bossGap: [0.3, 0.7],
-};
+const SHOT = { speed: 500, hitRadius: 60, firstDelay: 1.5, sealGap: [0.7, 1.9], bossGap: [0.3, 0.7] };
+// Each shot is one of these at random; `kills` means it takes a whole bee in one hit.
+const SHOT_KINDS = [
+  { src: 'assets/sting-swell.gif', frame: [1080, 1080], box: [198, 256, 359, 381], size: 0.4, rotates: false, kills: false },
+  // A comet drawn flying right, so it's rotated to its direction of travel. The box leaves out a few stray pixels.
+  { src: 'assets/SpitBallbomb.gif', frame: [1080, 1080], box: [330, 332, 636, 510], size: 0.28, rotates: true, kills: true },
+];
 
 // Two drops fall inside this GIF; `at` is each copy's centre in art coordinates, roughly under the hooks.
 const DRIP = { src: 'assets/bloneydrip.gif', frame: [1305, 1080], box: [218, 279, 487, 983] };
@@ -339,19 +337,21 @@ layoutLives();
 
 const hurtFlash = document.getElementById('hurt');
 // Sepia gives a single colour for hue-rotate to shift to red; both filters need matching lists to animate.
-const BEE_RED = { filter: 'brightness(0.7) sepia(1) saturate(8) hue-rotate(-33deg) drop-shadow(0 0 40px #ff2a00)' };
-const BEE_NORMAL = { filter: 'brightness(1) sepia(0) saturate(1) hue-rotate(0deg) drop-shadow(0 0 0 transparent)' };
+// Shadow radii are in the sprite's own pixels, which are scaled down to about a quarter on screen.
+const BEE_RED = { filter: 'brightness(0.7) sepia(1) saturate(8) hue-rotate(-33deg) drop-shadow(0 0 30px #ff0000) drop-shadow(0 0 80px #ff0000)' };
+const BEE_NORMAL = { filter: 'brightness(1) sepia(0) saturate(1) hue-rotate(0deg) drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent)' };
 let beeDamage = 0;
 
-function hitBee() {
+function hitBee(kills = false) {
   invulnerable = LIVES.hitProtectionSeconds;
   hurtFlash.animate([{ opacity: 0.5 }, { opacity: 0 }], { duration: 300, easing: 'ease-out' });
-  bees[beeIndex].el.animate([BEE_RED, BEE_NORMAL, BEE_RED, BEE_NORMAL], { duration: 400 });
-  beeDamage++;
+  beeDamage = kills ? LIVES.hitsPerBee : beeDamage + 1;
   if (beeDamage === LIVES.hitsPerBee) {
     beeDamage = 0;
     loseLife();
   }
+  // Flashes whichever bee is the pointer now, so the hit still shows when a bee has just died.
+  bees[beeIndex]?.el.animate([BEE_RED, BEE_NORMAL, BEE_RED, BEE_NORMAL], { duration: 400 });
 }
 
 function loseLife() {
@@ -379,16 +379,20 @@ function fireShot(fromX, fromY) {
   const targetX = Math.min(Math.max(pointer.x - stageLeft, 0), stageW);
   const targetY = Math.min(Math.max(pointer.y - stageTop, 0), stageH);
   const distance = Math.hypot(targetX - fromX, targetY - fromY) || 1;
-  const { el } = makeSprite(SHOT, SHOT.src);
+  const kind = pick(SHOT_KINDS);
+  const deg = kind.rotates ? Math.atan2(targetY - fromY, targetX - fromX) * 180 / Math.PI : 0;
+  const { el } = makeSprite(kind, kind.src);
   stage.append(el);
   shots.push({
     el,
+    kind,
     x: fromX,
     y: fromY,
     vx: (targetX - fromX) / distance * SHOT.speed,
     vy: (targetY - fromY) / distance * SHOT.speed,
+    deg,
   });
-  place(el, SHOT.box, fromX, fromY, scale * SHOT.size);
+  place(el, kind.box, fromX, fromY, scale * kind.size, deg);
 }
 
 function updateShooting(dt) {
@@ -411,7 +415,7 @@ function updateShots(dt) {
     const shot = shots[i];
     shot.x += shot.vx * dt * scale;
     shot.y += shot.vy * dt * scale;
-    place(shot.el, SHOT.box, shot.x, shot.y, scale * SHOT.size);
+    place(shot.el, shot.kind.box, shot.x, shot.y, scale * shot.kind.size, shot.deg);
 
     const offStage = shot.x < 0 || shot.x > stageW || shot.y < 0 || shot.y > stageH;
     const hitsBee = !ended && invulnerable <= 0 && pointer.inside
@@ -420,7 +424,7 @@ function updateShots(dt) {
       shot.el.remove();
       shots.splice(i, 1);
     }
-    if (hitsBee) hitBee();
+    if (hitsBee) hitBee(shot.kind.kills);
   }
 }
 
@@ -616,6 +620,8 @@ function startGame() {
   screenSprites.splice(0).forEach(({ el }) => el.remove());
   startScreen.hidden = true;
   document.getElementById('controls').hidden = false;
+  beeIndex = 0; // lives count up from the first bee, whichever was showing on the start screen
+  showBee();
   const opening = SEAL_ROUND.startMin + Math.floor(Math.random() * (SEAL_ROUND.startMax - SEAL_ROUND.startMin + 1));
   for (let i = 0; i < opening; i++) spawnSeal();
   running = true;
@@ -747,6 +753,11 @@ let misses = 0;
 
 addEventListener('pointerdown', e => {
   movePointer(e);
+  if (!startScreen.hidden) { // on the start screen, each click tries the next bee
+    beeIndex = (beeIndex + 1) % bees.length;
+    showBee();
+    return;
+  }
   if (!running || paused || ended || e.target.closest('button')) return;
   const x = e.clientX - stageLeft;
   const y = e.clientY - stageTop;
