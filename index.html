@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ultrapremium Honey</title>
+<title>UltrapremiumHoney</title>
 <link rel="icon" type="image/png" href="assets/favicon.png?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -77,7 +77,7 @@
 </head>
 <body>
 <div id="stage">
-  <video id="bg" src="assets/Background.mp4?v=2" autoplay muted loop playsinline></video>
+  <video id="bg" src="assets/Background.mp4?v=3" autoplay muted loop playsinline></video>
 </div>
 <div id="misses" class="counter"><div>MISSES</div><output id="miss-count">0</output></div>
 <div id="hits" class="counter"><div>HITS</div><output id="hit-count">0</output></div>
@@ -106,12 +106,12 @@
 </div>
 <div id="start" class="screen">
   <div class="sign">
-    <h1><a href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">ULTRAPREMIUM HONEY</a></h1>
+    <h1><a href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">ULTRAPREMIUMHONEY</a></h1>
     <button id="start-button" type="button">START</button>
   </div>
 </div>
 <div id="gameover" class="screen" role="status" hidden>
-  <video id="over-bg" src="assets/game_over_bg.mp4?v=2" muted loop playsinline preload="auto"></video>
+  <video id="over-bg" src="assets/game_over_bg.mp4?v=3" muted loop playsinline preload="auto"></video>
   <div class="sign">
     <h1>GAME OVER</h1>
     <p class="results"></p>
@@ -166,8 +166,8 @@ const DRIPS = [
 ];
 
 const BOSS = {
-  src: 'assets/BIGSEAL.gif', frame: [485, 833], box: [0, 0, 485, 833],
-  size: 1.1, hits: 20, delay: 900, dropSeconds: 1,
+  src: 'assets/BIGSEAL.webp', frame: [485, 833], box: [0, 0, 485, 833],
+  size: 1.1, hits: matchMedia('(pointer: coarse)').matches ? 10 : 20, delay: 900, dropSeconds: 1, // fewer on touch screens
   // It can only be hit while the GIF is on these frames, when it's flashing colours.
   frameMs: 40, frameCount: 223, flashFrames: [77, 117],
 };
@@ -204,7 +204,7 @@ measure();
 addEventListener('resize', measure);
 
 // Bump this whenever art is replaced under the same filename, so browsers don't reuse a cached copy.
-const ART_VERSION = 2;
+const ART_VERSION = 3;
 // Once the loading screen has fetched a file, it's kept in memory so nothing downloads mid-game.
 const artBlobs = new Map();
 const artUrls = new Map();
