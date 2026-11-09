@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ultrapremium Honey</title>
-<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Redaction+70&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Redaction+70&display=swap" media="print" onload="this.media='all'">
 <style>
   html, body { height: 100%; margin: 0; background: #000; }
   body { overflow: hidden; cursor: none; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -71,16 +71,6 @@
 </style>
 </head>
 <body>
-<!-- A dead bee's life icon: a red ring traced around its shape, with the bee itself removed.
-     The radius is in the sprite's own pixels, which are scaled down to about a fifth on screen. -->
-<svg width="0" height="0" style="position: absolute" aria-hidden="true">
-  <filter id="red-outline">
-    <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="grown"/>
-    <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring"/>
-    <feFlood flood-color="#ff2a2a"/>
-    <feComposite in2="ring" operator="in"/>
-  </filter>
-</svg>
 <div id="stage">
   <video id="bg" src="assets/Background.mp4" autoplay muted loop playsinline></video>
 </div>
@@ -114,11 +104,11 @@
 // Art is authored on a 1350x1080 canvas; everything scales with the background.
 const ART_W = 1350, ART_H = 1080;
 
-// box = [left, top, right, bottom] of the visible art inside each GIF's frame.
+// Every GIF is cropped to its art, so box is simply [0, 0, width, height].
 const SPECIES = [
-  { src: 'assets/seal_2_1.gif',     frame: [1350, 1080], box: [673, 372, 876, 725],  sizes: [0.4, 0.56] },
-  { src: 'assets/seal_3.gif',       frame: [1350, 1080], box: [250, 191, 564, 618],  sizes: [0.35, 0.49] },
-  { src: 'assets/seal_4_sting.gif', frame: [1350, 1080], box: [359, 503, 625, 795],  sizes: [0.4, 0.56] },
+  { src: 'assets/seal_2_1.gif',     frame: [203, 353], box: [0, 0, 203, 353],  sizes: [0.4, 0.56] },
+  { src: 'assets/seal_3.gif',       frame: [314, 427], box: [0, 0, 314, 427],  sizes: [0.35, 0.49] },
+  { src: 'assets/seal_4_sting.gif', frame: [266, 292], box: [0, 0, 266, 292],  sizes: [0.4, 0.56] },
 ];
 
 // Nothing escapes before graceSeconds; the seals due by then leave across the next graceSpread seconds.
@@ -126,29 +116,29 @@ const SEAL_ROUND = {
   total: 15, lifeSeconds: 4, graceSeconds: 6, graceSpread: 3, minGap: 0.5, maxGap: 1.6, maxOnScreen: 6,
   fastChance: 0.3, fastSpeed: 2.5, startMin: 5, startMax: 9,
 };
-const STING = { src: 'assets/Sting.gif', frame: [1080, 1080], box: [402, 314, 478, 429], size: 2.8, ms: 1200 };
+const STING = { src: 'assets/Sting.gif', frame: [76, 115], box: [0, 0, 76, 115], size: 2.8, ms: 1200 };
 
 // One bee per life; sizes even out their different art widths.
 const BEES = [
-  { src: 'assets/bee_1_0.gif', frame: [1350, 1080], box: [587, 379, 852, 687],  size: 0.35 },
-  { src: 'assets/bee_2_0.gif', frame: [1350, 1080], box: [828, 224, 1046, 453], size: 0.42 },
-  { src: 'assets/bee_3_0.gif', frame: [1350, 1080], box: [930, 536, 1132, 793], size: 0.45 },
-  { src: 'assets/bee_4_0.gif', frame: [1350, 1080], box: [99, 710, 310, 895],   size: 0.44 },
+  { src: 'assets/bee_1_0.gif', frame: [265, 308], box: [0, 0, 265, 308],  size: 0.35 },
+  { src: 'assets/bee_2_0.gif', frame: [218, 229], box: [0, 0, 218, 229], size: 0.42 },
+  { src: 'assets/bee_3_0.gif', frame: [202, 257], box: [0, 0, 202, 257], size: 0.45 },
+  { src: 'assets/bee_4_0.gif', frame: [211, 185], box: [0, 0, 211, 185],   size: 0.44 },
 ];
 const LIVES = { hitsPerBee: 2, hitProtectionSeconds: 0.4, invulnerableSeconds: 1.2, endDelay: 900 };
-const BEE_SPLAT = { src: 'assets/HoneySplosion.gif', frame: [1350, 1080], box: [402, 410, 708, 692], size: 0.5, ms: 1300 };
+const BEE_SPLAT = { src: 'assets/HoneySplosion.gif', frame: [306, 282], box: [0, 0, 306, 282], size: 0.5, ms: 1300 };
 
 // speed and hitRadius are in art pixels. Gaps are seconds between shots.
 const SHOT = { speed: 500, hitRadius: 60, firstDelay: 1.5, sealGap: [0.7, 1.9], bossGap: [0.3, 0.7] };
 // Each shot is one of these at random; `kills` means it takes a whole bee in one hit.
 const SHOT_KINDS = [
-  { src: 'assets/sting-swell.gif', frame: [1080, 1080], box: [198, 256, 359, 381], size: 0.4, rotates: false, kills: false },
-  // A comet drawn flying right, so it's rotated to its direction of travel. The box leaves out a few stray pixels.
-  { src: 'assets/SpitBallbomb.gif', frame: [1080, 1080], box: [330, 332, 636, 510], size: 0.28, rotates: true, kills: true },
+  { src: 'assets/sting-swell.gif', frame: [161, 125], box: [0, 0, 161, 125], size: 0.4, rotates: false, kills: false },
+  // A comet drawn flying right, so it's rotated to its direction of travel.
+  { src: 'assets/SpitBallbomb.gif', frame: [306, 178], box: [0, 0, 306, 178], size: 0.28, rotates: true, kills: true },
 ];
 
 // Two drops fall inside this GIF; `at` is each copy's centre in art coordinates, roughly under the hooks.
-const DRIP = { src: 'assets/bloneydrip.gif', frame: [1305, 1080], box: [218, 279, 487, 983] };
+const DRIP = { src: 'assets/bloneydrip.gif', frame: [269, 704], box: [0, 0, 269, 704] };
 const DRIPS = [
   { at: [280, 591], delay: 0 },
   { at: [627, 591], delay: 800 },
@@ -156,17 +146,19 @@ const DRIPS = [
 ];
 
 const BOSS = {
-  src: 'assets/BIGSEAL.gif', frame: [1350, 1080], box: [722, 42, 1207, 875],
-  size: 1.1, hits: 10, delay: 900, dropSeconds: 1,
+  src: 'assets/BIGSEAL.gif', frame: [485, 833], box: [0, 0, 485, 833],
+  size: 1.1, hits: 20, delay: 900, dropSeconds: 1,
+  // It can only be hit while the GIF is on these frames, when it's flashing colours.
+  frameMs: 40, frameCount: 223, flashFrames: [77, 117],
 };
 // The bag the seals are guarding: scenery in the boss round, hanging in the top right.
-const TARGET = { src: 'assets/ultrapremium.gif', frame: [1080, 1080], box: [0, 0, 1080, 884], size: 0.32 };
+const TARGET = { src: 'assets/ultrapremium.gif', frame: [1080, 884], box: [0, 0, 1080, 884], size: 0.32 };
 // The art in a corner of each end screen. With a `size` it grows from that to `endSize`.
 const WIN_ART = { ...TARGET, endSize: 0.85 };
-const LOSS_ART = { src: 'assets/HiveBreak.gif', frame: [1350, 1080], box: [282, 181, 1003, 979], endSize: 0.68, side: 'left', fallMs: 1600 };
-const LOSS_SPLAT = { src: 'assets/SPLATBealFrame2.gif', frame: [1350, 1080], box: [425, 584, 1061, 1046], size: 0.7, ms: 1000 };
+const LOSS_ART = { src: 'assets/HiveBreak.gif', frame: [721, 798], box: [0, 0, 721, 798], endSize: 0.68, side: 'left', fallMs: 1600 };
+const LOSS_SPLAT = { src: 'assets/SPLATBealFrame2.gif', frame: [636, 462], box: [0, 0, 636, 462], size: 0.7, ms: 1000 };
 const GROW_TIMING = { duration: 900, easing: 'cubic-bezier(0.2, 1.2, 0.4, 1)' };
-const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [1080, 1080], box: [365, 61, 830, 527], size: 1.6, ms: 1000 };
+const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [465, 466], box: [0, 0, 465, 466], size: 1.6, ms: 1000 };
 
 // `at` is [x, y] as fractions of the window.
 const START_ART = [
@@ -191,6 +183,12 @@ function measure() {
 measure();
 addEventListener('resize', measure);
 
+// Bump this whenever art is replaced under the same filename, so browsers don't reuse a cached copy.
+const ART_VERSION = 2;
+function artUrl(src) {
+  return `${src}${src.includes('?') ? '&' : '?'}v=${ART_VERSION}`;
+}
+
 // A clipped window onto the visible part of a GIF, so a sprite's position is its real centre.
 function makeSprite({ frame, box }, src) {
   const el = document.createElement('div');
@@ -202,7 +200,7 @@ function makeSprite({ frame, box }, src) {
   img.draggable = false;
   img.style.left = -box[0] + 'px';
   img.style.top = -box[1] + 'px';
-  img.src = src;
+  img.src = artUrl(src);
   el.append(img);
   return { el, img };
 }
@@ -355,10 +353,29 @@ function hitBee(kills = false) {
   bees[beeIndex]?.el.animate([BEE_RED, BEE_NORMAL, BEE_RED, BEE_NORMAL], { duration: 400 });
 }
 
+// A pre-drawn outline, so dead bees cost nothing per frame. Padded for the ring, with the same centre.
+const OUTLINE_PAD = 9;
+const BEE_OUTLINES = BEES.map(({ box }, i) => {
+  const width = box[2] + OUTLINE_PAD * 2;
+  const height = box[3] + OUTLINE_PAD * 2;
+  return { src: `assets/bee_${i + 1}_outline.png`, frame: [width, height], box: [0, 0, width, height] };
+});
+BEE_OUTLINES.forEach(({ src }) => { new Image().src = artUrl(src); }); // ready before the first bee dies
+
+function showDeadLifeIcon(i) {
+  const outline = BEE_OUTLINES[i];
+  const { el } = makeSprite(outline, outline.src);
+  el.style.zIndex = 16;
+  document.body.append(el);
+  lifeIcons[i].el.remove();
+  lifeIcons[i] = { ...lifeIcons[i], ...outline, el };
+  layoutLives();
+}
+
 function loseLife() {
   invulnerable = LIVES.invulnerableSeconds;
   playEffect(BEE_SPLAT, document.body, pointer.x, pointer.y, scale * BEE_SPLAT.size, BEE_SPLAT.ms, 11);
-  lifeIcons[beeIndex].el.style.filter = 'url(#red-outline)';
+  showDeadLifeIcon(beeIndex);
   beeIndex++;
   if (beeIndex === bees.length) {
     ended = true;
@@ -531,8 +548,15 @@ function sealAt(x, y) {
   });
 }
 
+// The GIF can't be asked which frame it's on, so this works it out from when it started.
+function bossIsFlashing() {
+  if (boss.gifStart === null) return false;
+  const frame = Math.floor((performance.now() - boss.gifStart) / BOSS.frameMs) % BOSS.frameCount;
+  return frame >= BOSS.flashFrames[0] && frame <= BOSS.flashFrames[1];
+}
+
 function isOnBoss(x, y) {
-  if (!boss || boss.dead) return false;
+  if (!boss || boss.dead || !bossIsFlashing()) return false;
   const s = scale * BOSS.size;
   const { box } = BOSS;
   return inEllipse(x, y, boss.x, boss.y, (box[2] - box[0]) * s / 2, (box[3] - box[1]) * s / 2);
@@ -561,9 +585,12 @@ function popSeal(seal) {
 function spawnBoss() {
   const target = makeSprite(TARGET, TARGET.src).el;
   stage.append(target);
-  const { el } = makeSprite(BOSS, BOSS.src);
+  // Its own URL so the GIF starts from frame 0 here, rather than wherever the start screen's copy had got to.
+  const { el, img } = makeSprite(BOSS, `${BOSS.src}?boss`);
   stage.append(el);
-  boss = { el, target, x: 0, y: 0, drop: 0, hits: 0, dead: false };
+  const spawned = { el, target, x: 0, y: 0, drop: 0, hits: 0, dead: false, gifStart: null };
+  img.onload = () => { spawned.gifStart = performance.now(); };
+  boss = spawned;
 }
 
 // Both filters need matching lists to animate.
