@@ -43,6 +43,11 @@
   #hurt { background: #d0101a; }
   .screen { position: fixed; inset: 0; z-index: 15; background: #000; display: grid; place-items: center; overflow: hidden; }
   .screen[hidden] { display: none; }
+  #loading { z-index: 19; }
+  .loader { display: flex; flex-direction: column; align-items: center; gap: 3vh; }
+  .loader-art { position: relative; width: 32vh; height: 32vh; }
+  .loader-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #loading-text { width: 5.4em; font-family: "Redaction 70", Georgia, serif; font-size: clamp(22px, 5.5vmin, 64px); color: #ffd23f; }
   #start { z-index: 17; } /* above the counters and lives */
   #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
   /* Same box as the stage, so the art keeps its proportions. */
@@ -84,6 +89,21 @@
   <button type="button" aria-label="Restart" onclick="restartGame()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
 </div>
 <div id="paused" hidden><div class="sign"><h1>PAUSED</h1></div></div>
+<div id="loading" class="screen" role="status">
+  <div class="loader">
+    <div class="loader-art">
+      <img src="assets/loading/1.png" alt="" draggable="false">
+      <img src="assets/loading/2.png" alt="" hidden draggable="false">
+      <img src="assets/loading/3.png" alt="" hidden draggable="false">
+      <img src="assets/loading/4.png" alt="" hidden draggable="false">
+      <img src="assets/loading/5.png" alt="" hidden draggable="false">
+      <img src="assets/loading/6.png" alt="" hidden draggable="false">
+      <img src="assets/loading/7.png" alt="" hidden draggable="false">
+      <img src="assets/loading/8.png" alt="" hidden draggable="false">
+    </div>
+    <div id="loading-text">loading.</div>
+  </div>
+</div>
 <div id="start" class="screen">
   <div class="sign">
     <h1><a href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">ULTRAPREMIUM HONEY</a></h1>
@@ -805,12 +825,56 @@ addEventListener('pointerdown', e => {
   if (!bossBeaten) playEffect(STING, document.body, e.clientX, e.clientY, scale * STING.size, STING.ms, 10);
 });
 
+let skipStart = false;
 try {
-  if (sessionStorage.getItem(SKIP_START_KEY)) {
-    sessionStorage.removeItem(SKIP_START_KEY);
-    startGame();
-  }
+  skipStart = Boolean(sessionStorage.getItem(SKIP_START_KEY));
+  sessionStorage.removeItem(SKIP_START_KEY);
 } catch { /* storage blocked: stay on the start screen */ }
+
+// Loading screen: dots and pictures cycle until the art is ready. A short minimum keeps it from
+// flashing past on a fast load, and the limit means a slow or failed file can never leave it stuck.
+const LOADING = { stepMs: 350, minMs: 1200, maxMs: 20000 };
+const loadingScreen = document.getElementById('loading');
+const loadingText = document.getElementById('loading-text');
+const loadingArt = [...loadingScreen.querySelectorAll('img')];
+let loadingStep = 0;
+const loadingTimer = setInterval(() => {
+  loadingStep++;
+  loadingText.textContent = 'loading' + '.'.repeat(loadingStep % 3 + 1);
+  loadingArt.forEach((img, i) => { img.hidden = i !== loadingStep % loadingArt.length; });
+}, LOADING.stepMs);
+
+function loadArt(src) {
+  return new Promise(done => {
+    const img = new Image();
+    img.onload = img.onerror = done;
+    img.src = artUrl(src);
+  });
+}
+
+function backgroundReady() {
+  const video = document.getElementById('bg');
+  if (video.readyState >= 3) return Promise.resolve();
+  return new Promise(done => {
+    video.addEventListener('canplay', done, { once: true });
+    video.addEventListener('error', done, { once: true });
+  });
+}
+
+const wait = ms => new Promise(done => setTimeout(done, ms));
+const allArt = [...SPECIES, ...BEES, ...SHOT_KINDS, BOSS, TARGET, LOSS_ART, LOSS_SPLAT, STING, BEE_SPLAT, FINAL_BLOW, DRIP];
+const everythingLoaded = Promise.all([backgroundReady(), ...new Set(allArt.map(item => item.src))].map(
+  item => (typeof item === 'string' ? loadArt(item) : item),
+));
+
+Promise.race([
+  Promise.all([everythingLoaded, wait(skipStart ? 0 : LOADING.minMs)]),
+  wait(LOADING.maxMs),
+]).then(() => {
+  clearInterval(loadingTimer);
+  loadingScreen.remove();
+  if (skipStart) startGame();
+});
 </script>
 </body>
 </html>
