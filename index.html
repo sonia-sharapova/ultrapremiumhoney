@@ -76,6 +76,16 @@
   }
   #drawer-toggle:hover { color: #120a00; background: #ffd23f; }
   #drawer-toggle svg { display: block; width: 1.2em; height: 1.2em; fill: currentColor; }
+  /* Portrait screens: the drawer drops from the top, and the tab becomes a strip along its bottom edge. */
+  @media (max-aspect-ratio: 1/1) {
+    #start-content { transform-origin: center bottom; }
+    #drawer { left: 0; right: 0; bottom: auto; display: block; width: auto; transform: translateY(-100%); }
+    #drawer.open { transform: translateY(0); }
+    .drawer-media { padding: 16px 16px 0; }
+    #drawer-toggle { top: calc(100% + 6px); right: -6px; bottom: auto; left: -6px; justify-content: center; padding: 0.2em 0; border: 6px solid #ff9a1a; border-top: 0; border-radius: 0 0 5px 5px; }
+    #start .sign h1 { font-size: 8.6vw; } /* the long title has to fit across a phone */
+    #drawer-toggle svg { transform: rotate(-90deg); } /* the side arrows, turned to point down and up */
+  }
   #start .sign { transition: padding 0.35s ease; }
   #start-content.beside-drawer .sign { padding: 0.5em 1.6em; }
   #start-content .sprite { transition: transform 0.35s ease; }
@@ -723,9 +733,12 @@ layoutScreens();
 // With the drawer open, the whole start screen shrinks into the space left of it and rearranges.
 const DRAWER_GAP = 24; // the right margin in #drawer.open
 function fitStartBesideDrawer() {
-  const room = innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth;
+  const portrait = matchMedia('(max-aspect-ratio: 1/1)').matches;
+  const shrink = portrait
+    ? (innerHeight - drawer.offsetHeight - drawerToggle.offsetHeight) / innerHeight
+    : (innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth) / innerWidth;
   const open = drawer.classList.contains('open');
-  startContent.style.transform = open ? `scale(${room / innerWidth})` : '';
+  startContent.style.transform = open ? `scale(${shrink})` : '';
   startContent.classList.toggle('beside-drawer', open);
   layoutScreens(); // the smaller layout spreads the side images away from a wider title
 }
