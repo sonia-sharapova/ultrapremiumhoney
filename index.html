@@ -49,7 +49,7 @@
   .loader-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   #loading-text { width: 5.4em; font-family: "Redaction 70", Georgia, serif; font-size: clamp(22px, 5.5vmin, 64px); color: #ffd23f; }
   #start { z-index: 17; } /* above the counters and lives */
-  #start-content { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: left center; transition: transform 0.35s ease; }
+  #start-content { position: absolute; inset: 0; display: grid; place-items: center; transition: transform 0.35s ease, right 0.35s ease; }
   #drawer {
     position: absolute; top: 0; bottom: 0; right: 0; z-index: 3; display: flex; align-items: center; box-sizing: border-box;
     width: min(42vw, 110vh); transform: translateX(100%); transition: transform 0.35s ease;
@@ -86,8 +86,7 @@
     #drawer:not(.open) #drawer-toggle { border-top: 6px solid #ff9a1a; border-radius: 5px; }
     #drawer-toggle svg { transform: rotate(-90deg); } /* the side arrows, turned to point down and up */
   }
-  #start .sign { transition: padding 0.35s ease; }
-  #start-content.beside-drawer .sign { padding: 0.5em 1.6em; }
+  #start .sign { transition: font-size 0.35s ease; }
   #start-content .sprite { transition: transform 0.35s ease, opacity 0.25s ease; }
   #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
   /* Same box as the stage, so the art keeps its proportions. */
@@ -236,11 +235,14 @@ const GROW_TIMING = { duration: 900, easing: 'cubic-bezier(0.2, 1.2, 0.4, 1)' };
 const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [465, 466], box: [0, 0, 465, 466], size: 1.6, ms: 1000 };
 
 // `at` is [x, y] as fractions of the window.
+// Split view (drawer open on a wide screen): images a little smaller, and further above and below the title.
+const SPLIT_IMAGES = { scale: 0.85, raiseTop: 0.04, lowerBottom: 0.05 };
+
 const START_ART = [
-  { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3],  atBesideDrawer: [0.15, 0.19] },
-  { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3],  atBesideDrawer: [0.85, 0.13] },
-  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], atBesideDrawer: [0.22, 0.89], belowTitle: true },
-  { ...BOSS,       size: 0.42, at: [0.82, 0.72], atBesideDrawer: [0.82, 0.83], belowTitle: true },
+  { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3] },
+  { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3] },
+  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], belowTitle: true },
+  { ...BOSS,       size: 0.42, at: [0.82, 0.72], belowTitle: true },
   { ...BEES[0],    size: 0.6,  at: [0.5, 0.13] },
   { ...BEES[3],    size: 0.6,  at: [0.5, 0.87], belowTitle: true },
 ];
@@ -730,11 +732,12 @@ function layoutScreens() {
   const u = Math.min(innerWidth / ART_W, innerHeight / ART_H);
   const besideDrawer = startContent.classList.contains('beside-drawer');
   const belowDrawer = startContent.classList.contains('below-drawer');
-  for (const { el, box, at, atBesideDrawer, belowTitle, size } of screenSprites) {
-    const [x, y] = (besideDrawer && atBesideDrawer) || at;
+  const width = besideDrawer ? roomBesideDrawer() : innerWidth; // the images spread across the space left of the drawer
+  for (const { el, box, at: [x, y], belowTitle, size } of screenSprites) {
     el.style.opacity = belowDrawer && !belowTitle ? 0 : '';
-    const screenY = belowDrawer && belowTitle ? yBelowTitle(y, u) : y * innerHeight;
-    place(el, box, x * innerWidth, screenY, u * size);
+    const splitNudge = y < 0.5 ? -SPLIT_IMAGES.raiseTop : SPLIT_IMAGES.lowerBottom;
+    const screenY = belowDrawer && belowTitle ? yBelowTitle(y, u) : (y + (besideDrawer ? splitNudge : 0)) * innerHeight;
+    place(el, box, x * width, screenY, u * size * (besideDrawer ? SPLIT_IMAGES.scale : 1));
   }
 }
 addEventListener('resize', layoutScreens);
@@ -752,22 +755,24 @@ for (const item of START_ART) {
 }
 layoutScreens();
 
-// With the drawer open, the whole start screen shrinks into the space left of it and rearranges.
+// With the drawer open on a wide screen, the start screen narrows to the space left of it. The images
+// keep their size; the title box resizes to fill that space (its width is about 20 times its font size).
 const DRAWER_GAP = 24; // the right margin in #drawer.open
+const TITLE_WIDTH_EM = 20;
+function roomBesideDrawer() {
+  return innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth;
+}
+
 function fitStartBesideDrawer() {
   const portrait = matchMedia('(max-aspect-ratio: 1/1)').matches;
   const open = drawer.classList.contains('open');
-  startContent.classList.toggle('beside-drawer', open && !portrait);
+  const beside = open && !portrait;
+  startContent.classList.toggle('beside-drawer', beside);
   startContent.classList.toggle('below-drawer', open && portrait);
-  if (!open) {
-    startContent.style.transform = '';
-  } else if (portrait) {
-    startContent.style.transform = `translateY(${startShift()}px)`;
-  } else {
-    const shrink = (innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth) / innerWidth;
-    startContent.style.transform = `scale(${shrink})`;
-  }
-  layoutScreens(); // the smaller layout spreads the side images away from a wider title
+  startContent.style.right = beside ? `${innerWidth - roomBesideDrawer()}px` : '';
+  startSign.style.fontSize = beside ? `min(${roomBesideDrawer() * 0.91 / TITLE_WIDTH_EM}px, clamp(22px, 5.5vmin, 64px))` : '';
+  startContent.style.transform = open && portrait ? `translateY(${startShift()}px)` : '';
+  layoutScreens();
 }
 addEventListener('resize', fitStartBesideDrawer);
 
