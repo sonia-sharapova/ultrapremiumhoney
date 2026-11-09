@@ -78,17 +78,17 @@
   #drawer-toggle svg { display: block; width: 1.2em; height: 1.2em; fill: currentColor; }
   /* Portrait screens: the drawer drops from the top, and the tab becomes a strip along its bottom edge. */
   @media (max-aspect-ratio: 1/1) {
-    #start-content { transform-origin: center bottom; }
     #drawer { left: 0; right: 0; bottom: auto; display: block; width: auto; transform: translateY(-100%); }
     #drawer.open { transform: translateY(0); }
     .drawer-media { padding: 16px 16px 0; }
     #drawer-toggle { top: calc(100% + 6px); right: -6px; bottom: auto; left: -6px; justify-content: center; padding: 0.2em 0; border: 6px solid #ff9a1a; border-top: 0; border-radius: 0 0 5px 5px; }
     #start .sign h1 { font-size: 8.6vw; } /* the long title has to fit across a phone */
+    #drawer:not(.open) #drawer-toggle { border-top: 6px solid #ff9a1a; border-radius: 5px; }
     #drawer-toggle svg { transform: rotate(-90deg); } /* the side arrows, turned to point down and up */
   }
   #start .sign { transition: padding 0.35s ease; }
   #start-content.beside-drawer .sign { padding: 0.5em 1.6em; }
-  #start-content .sprite { transition: transform 0.35s ease; }
+  #start-content .sprite { transition: transform 0.35s ease, opacity 0.25s ease; }
   #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
   /* Same box as the stage, so the art keeps its proportions. */
   #over-bg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(110vh, 100vw); aspect-ratio: 5 / 4; }
@@ -239,10 +239,10 @@ const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [465, 466], box: [0, 0, 
 const START_ART = [
   { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3],  atBesideDrawer: [0.15, 0.19] },
   { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3],  atBesideDrawer: [0.85, 0.13] },
-  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], atBesideDrawer: [0.22, 0.89] },
-  { ...BOSS,       size: 0.42, at: [0.82, 0.72], atBesideDrawer: [0.82, 0.83] },
+  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], atBesideDrawer: [0.22, 0.89], belowTitle: true },
+  { ...BOSS,       size: 0.42, at: [0.82, 0.72], atBesideDrawer: [0.82, 0.83], belowTitle: true },
   { ...BEES[0],    size: 0.6,  at: [0.5, 0.13] },
-  { ...BEES[3],    size: 0.6,  at: [0.5, 0.87] },
+  { ...BEES[3],    size: 0.6,  at: [0.5, 0.87], belowTitle: true },
 ];
 
 const stage = document.getElementById('stage');
@@ -707,13 +707,34 @@ function damageBoss() {
   after(FINAL_BLOW.ms + 400, showWin);
 }
 
+// Portrait screens with the drawer open: the title sits just under the drawer at full size, and
+// the images below it move down too, keeping their usual positions. startShift is that move.
+function titleTopBelowDrawer() {
+  return drawer.offsetHeight + drawerToggle.offsetHeight + 16;
+}
+function startShift() {
+  return titleTopBelowDrawer() - startSign.offsetTop;
+}
+// On a short screen, closes up the gaps under the title just enough to keep every image in view.
+function yBelowTitle(y, u) {
+  const titleBottom = startSign.offsetTop + startSign.offsetHeight;
+  const deepest = Math.max(...screenSprites.filter(item => item.belowTitle).map(
+    ({ at, box, size }) => at[1] * innerHeight + (box[3] - box[1]) * u * size / 2 - titleBottom,
+  ));
+  const room = innerHeight - (titleBottom + startShift()) - 8;
+  return titleBottom + (y * innerHeight - titleBottom) * Math.min(1, room / deepest);
+}
+
 const screenSprites = [];
 function layoutScreens() {
   const u = Math.min(innerWidth / ART_W, innerHeight / ART_H);
   const besideDrawer = startContent.classList.contains('beside-drawer');
-  for (const { el, box, at, atBesideDrawer, size } of screenSprites) {
+  const belowDrawer = startContent.classList.contains('below-drawer');
+  for (const { el, box, at, atBesideDrawer, belowTitle, size } of screenSprites) {
     const [x, y] = (besideDrawer && atBesideDrawer) || at;
-    place(el, box, x * innerWidth, y * innerHeight, u * size);
+    el.style.opacity = belowDrawer && !belowTitle ? 0 : '';
+    const screenY = belowDrawer && belowTitle ? yBelowTitle(y, u) : y * innerHeight;
+    place(el, box, x * innerWidth, screenY, u * size);
   }
 }
 addEventListener('resize', layoutScreens);
@@ -722,6 +743,7 @@ const pauseButton = document.getElementById('pause');
 const pausedBanner = document.getElementById('paused');
 const startScreen = document.getElementById('start');
 const startContent = document.getElementById('start-content');
+const startSign = startContent.querySelector('.sign');
 
 for (const item of START_ART) {
   const { el } = makeSprite(item, item.src);
@@ -734,12 +756,17 @@ layoutScreens();
 const DRAWER_GAP = 24; // the right margin in #drawer.open
 function fitStartBesideDrawer() {
   const portrait = matchMedia('(max-aspect-ratio: 1/1)').matches;
-  const shrink = portrait
-    ? (innerHeight - drawer.offsetHeight - drawerToggle.offsetHeight) / innerHeight
-    : (innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth) / innerWidth;
   const open = drawer.classList.contains('open');
-  startContent.style.transform = open ? `scale(${shrink})` : '';
-  startContent.classList.toggle('beside-drawer', open);
+  startContent.classList.toggle('beside-drawer', open && !portrait);
+  startContent.classList.toggle('below-drawer', open && portrait);
+  if (!open) {
+    startContent.style.transform = '';
+  } else if (portrait) {
+    startContent.style.transform = `translateY(${startShift()}px)`;
+  } else {
+    const shrink = (innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth) / innerWidth;
+    startContent.style.transform = `scale(${shrink})`;
+  }
   layoutScreens(); // the smaller layout spreads the side images away from a wider title
 }
 addEventListener('resize', fitStartBesideDrawer);
