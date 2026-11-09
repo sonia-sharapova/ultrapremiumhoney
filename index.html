@@ -49,6 +49,36 @@
   .loader-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   #loading-text { width: 5.4em; font-family: "Redaction 70", Georgia, serif; font-size: clamp(22px, 5.5vmin, 64px); color: #ffd23f; }
   #start { z-index: 17; } /* above the counters and lives */
+  #start-content { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: left center; transition: transform 0.35s ease; }
+  #drawer {
+    position: absolute; top: 0; bottom: 0; right: 0; z-index: 3; display: flex; align-items: center; box-sizing: border-box;
+    width: min(42vw, 110vh); transform: translateX(100%); transition: transform 0.35s ease;
+    border: 6px solid #ff9a1a; border-radius: 5px; background: #120a00;
+  }
+  #drawer.open { transform: translateX(-24px); box-shadow: 0 0 40px #ff9a1a88; }
+  .drawer-media { box-sizing: border-box; width: 100%; padding: 0 20px; }
+  #drawer video { display: block; width: 100%; aspect-ratio: 5 / 4; }
+  .sound { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+  #sound-toggle { padding: 0.2em 0.4em; font-size: clamp(18px, 3.2vh, 28px); color: #ffd23f; background: none; border: 0; border-radius: 5px; cursor: none; }
+  #sound-toggle:hover { color: #120a00; background: #ffd23f; }
+  #sound-toggle svg { display: block; width: 1.2em; height: 1.2em; fill: currentColor; }
+  /* Hovering previews what a click will do: the mute icon while there's sound, the sound icon while muted. */
+  #sound-toggle .icon-off, #sound-toggle:hover .icon-on, #sound-toggle.muted .icon-on { display: none; }
+  #sound-toggle:hover .icon-off, #sound-toggle.muted .icon-off { display: block; }
+  #sound-toggle.muted:hover .icon-off { display: none; }
+  #sound-toggle.muted:hover .icon-on { display: block; }
+  #sound-volume { flex: 0 1 40%; accent-color: #ffd23f; cursor: none; }
+  /* The full height of the drawer, joined to its left edge. */
+  #drawer-toggle {
+    position: absolute; top: -6px; bottom: -6px; right: calc(100% + 6px); display: flex; align-items: center; padding: 0 0.2em;
+    font-size: clamp(18px, 3.2vh, 28px); color: #ffd23f; background: #120a00;
+    border: 6px solid #ff9a1a; border-right: 0; border-radius: 5px 0 0 5px; cursor: none;
+  }
+  #drawer-toggle:hover { color: #120a00; background: #ffd23f; }
+  #drawer-toggle svg { display: block; width: 1.2em; height: 1.2em; fill: currentColor; }
+  #start .sign { transition: padding 0.35s ease; }
+  #start-content.beside-drawer .sign { padding: 0.5em 1.6em; }
+  #start-content .sprite { transition: transform 0.35s ease; }
   #start .sprite { z-index: 2; } /* in front of the sign; clicks still pass through to START */
   /* Same box as the stage, so the art keeps its proportions. */
   #over-bg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(110vh, 100vw); aspect-ratio: 5 / 4; }
@@ -105,9 +135,24 @@
   </div>
 </div>
 <div id="start" class="screen">
+  <div id="start-content">
   <div class="sign">
     <h1><a href="https://www.instagram.com/casual.terrorist/" target="_blank" rel="noopener">ULTRAPREMIUMHONEY</a></h1>
     <button id="start-button" type="button">START</button>
+  </div>
+  </div>
+  <div id="drawer">
+    <button id="drawer-toggle" type="button" aria-label="Open video" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="drawer-icon" d="M15.4 6 14 4.6 6.6 12l7.4 7.4 1.4-1.4-6-6z"/></svg></button>
+    <div class="drawer-media">
+      <video src="assets/HoneyHamHive.mp4?v=3" loop playsinline preload="none"></video>
+      <div class="sound">
+        <button id="sound-toggle" type="button" aria-label="Mute">
+          <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0 0 21 12c0-4.28-3-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a9 9 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>
+        </button>
+        <input id="sound-volume" type="range" min="0" max="1" step="0.01" value="0.7" aria-label="Volume">
+      </div>
+    </div>
   </div>
 </div>
 <div id="gameover" class="screen" role="status" hidden>
@@ -182,10 +227,10 @@ const FINAL_BLOW = { src: 'assets/SealBomb.gif', frame: [465, 466], box: [0, 0, 
 
 // `at` is [x, y] as fractions of the window.
 const START_ART = [
-  { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3] },
-  { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3] },
-  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75] },
-  { ...BOSS,       size: 0.42, at: [0.82, 0.72] },
+  { ...SPECIES[0], size: 0.7,  at: [0.15, 0.3],  atBesideDrawer: [0.15, 0.19] },
+  { ...SPECIES[1], size: 0.6,  at: [0.85, 0.3],  atBesideDrawer: [0.85, 0.13] },
+  { ...SPECIES[2], size: 0.7,  at: [0.22, 0.75], atBesideDrawer: [0.22, 0.89] },
+  { ...BOSS,       size: 0.42, at: [0.82, 0.72], atBesideDrawer: [0.82, 0.83] },
   { ...BEES[0],    size: 0.6,  at: [0.5, 0.13] },
   { ...BEES[3],    size: 0.6,  at: [0.5, 0.87] },
 ];
@@ -655,8 +700,10 @@ function damageBoss() {
 const screenSprites = [];
 function layoutScreens() {
   const u = Math.min(innerWidth / ART_W, innerHeight / ART_H);
-  for (const { el, box, at, size } of screenSprites) {
-    place(el, box, at[0] * innerWidth, at[1] * innerHeight, u * size);
+  const besideDrawer = startContent.classList.contains('beside-drawer');
+  for (const { el, box, at, atBesideDrawer, size } of screenSprites) {
+    const [x, y] = (besideDrawer && atBesideDrawer) || at;
+    place(el, box, x * innerWidth, y * innerHeight, u * size);
   }
 }
 addEventListener('resize', layoutScreens);
@@ -664,15 +711,79 @@ addEventListener('resize', layoutScreens);
 const pauseButton = document.getElementById('pause');
 const pausedBanner = document.getElementById('paused');
 const startScreen = document.getElementById('start');
+const startContent = document.getElementById('start-content');
 
 for (const item of START_ART) {
   const { el } = makeSprite(item, item.src);
-  startScreen.append(el);
+  startContent.append(el);
   screenSprites.push({ ...item, el });
 }
 layoutScreens();
 
+// With the drawer open, the whole start screen shrinks into the space left of it and rearranges.
+const DRAWER_GAP = 24; // the right margin in #drawer.open
+function fitStartBesideDrawer() {
+  const room = innerWidth - drawer.offsetWidth - DRAWER_GAP - drawerToggle.offsetWidth;
+  const open = drawer.classList.contains('open');
+  startContent.style.transform = open ? `scale(${room / innerWidth})` : '';
+  startContent.classList.toggle('beside-drawer', open);
+  layoutScreens(); // the smaller layout spreads the side images away from a wider title
+}
+addEventListener('resize', fitStartBesideDrawer);
+
+// The video only downloads and plays while the drawer is open.
+const drawer = document.getElementById('drawer');
+const drawerToggle = document.getElementById('drawer-toggle');
+const drawerVideo = drawer.querySelector('video');
+drawerToggle.addEventListener('click', () => {
+  const open = drawer.classList.toggle('open');
+  drawerToggle.setAttribute('aria-expanded', open);
+  drawerToggle.setAttribute('aria-label', open ? 'Close video' : 'Open video');
+  document.getElementById('drawer-icon').setAttribute('d', open ? 'M8.6 18l1.4 1.4 7.4-7.4L10 4.6 8.6 6l6 6z' : 'M15.4 6 14 4.6 6.6 12l7.4 7.4 1.4-1.4-6-6z');
+  fitStartBesideDrawer();
+  if (open) {
+    drawerVideo.play().catch(() => { // a browser that refuses sound can still play it silently
+      drawerVideo.muted = true;
+      showSoundState();
+      drawerVideo.play();
+    });
+  } else {
+    drawerVideo.pause();
+  }
+});
+
+const soundToggle = document.getElementById('sound-toggle');
+const soundVolume = document.getElementById('sound-volume');
+let lastVolume = Number(soundVolume.value);
+drawerVideo.volume = lastVolume;
+
+function showSoundState() {
+  const silent = drawerVideo.muted || drawerVideo.volume === 0;
+  soundToggle.classList.toggle('muted', silent);
+  soundToggle.setAttribute('aria-label', silent ? 'Unmute' : 'Mute');
+  soundVolume.value = silent ? 0 : drawerVideo.volume;
+}
+
+soundToggle.addEventListener('click', () => {
+  if (drawerVideo.muted || drawerVideo.volume === 0) {
+    drawerVideo.muted = false;
+    drawerVideo.volume = lastVolume;
+  } else {
+    drawerVideo.muted = true;
+  }
+  showSoundState();
+});
+
+soundVolume.addEventListener('input', () => {
+  const volume = Number(soundVolume.value);
+  drawerVideo.volume = volume;
+  drawerVideo.muted = volume === 0;
+  if (volume > 0) lastVolume = volume;
+  showSoundState();
+});
+
 function startGame() {
+  drawerVideo.pause();
   screenSprites.splice(0).forEach(({ el }) => el.remove());
   startScreen.hidden = true;
   document.getElementById('controls').hidden = false;
@@ -810,6 +921,7 @@ let misses = 0;
 addEventListener('pointerdown', e => {
   movePointer(e);
   if (!startScreen.hidden) { // on the start screen, each click tries the next bee
+    if (e.target.closest('#drawer')) return;
     beeIndex = (beeIndex + 1) % bees.length;
     showBee();
     return;
