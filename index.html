@@ -45,7 +45,7 @@
   .screen[hidden] { display: none; }
   #loading { z-index: 19; }
   .loader { display: flex; flex-direction: column; align-items: center; gap: 3vh; }
-  .loader-art { position: relative; width: 32vh; height: 32vh; }
+  .loader-art { position: relative; width: 18vh; height: 18vh; }
   .loader-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   #loading-text { width: 5.4em; font-family: "Redaction 70", Georgia, serif; font-size: clamp(22px, 5.5vmin, 64px); color: #ffd23f; }
   #start { z-index: 17; } /* above the counters and lives */
@@ -77,7 +77,7 @@
 </head>
 <body>
 <div id="stage">
-  <video id="bg" src="assets/Background.mp4" autoplay muted loop playsinline></video>
+  <video id="bg" src="assets/Background.mp4?v=2" autoplay muted loop playsinline></video>
 </div>
 <div id="misses" class="counter"><div>MISSES</div><output id="miss-count">0</output></div>
 <div id="hits" class="counter"><div>HITS</div><output id="hit-count">0</output></div>
@@ -111,7 +111,7 @@
   </div>
 </div>
 <div id="gameover" class="screen" role="status" hidden>
-  <video id="over-bg" src="assets/game_over_bg.mp4" muted loop playsinline preload="auto"></video>
+  <video id="over-bg" src="assets/game_over_bg.mp4?v=2" muted loop playsinline preload="auto"></video>
   <div class="sign">
     <h1>GAME OVER</h1>
     <p class="results"></p>
@@ -205,8 +205,19 @@ addEventListener('resize', measure);
 
 // Bump this whenever art is replaced under the same filename, so browsers don't reuse a cached copy.
 const ART_VERSION = 2;
+// Once the loading screen has fetched a file, it's kept in memory so nothing downloads mid-game.
+const artBlobs = new Map();
+const artUrls = new Map();
 function artUrl(src) {
-  return `${src}${src.includes('?') ? '&' : '?'}v=${ART_VERSION}`;
+  if (src.startsWith('blob:')) return src;
+  return artUrls.get(src) ?? `${src}${src.includes('?') ? '&' : '?'}v=${ART_VERSION}`;
+}
+
+// A URL of its own makes a GIF play from its first frame, because browsers share one animation
+// clock per URL. A new blob URL does that without downloading the file again.
+let freshUrlId = 0;
+function freshUrl(src) {
+  return artBlobs.has(src) ? URL.createObjectURL(artBlobs.get(src)) : `${src}?${++freshUrlId}`;
 }
 
 // A clipped window onto the visible part of a GIF, so a sprite's position is its real centre.
@@ -232,11 +243,8 @@ function place(el, box, cx, cy, s, deg = 0) {
 }
 
 // Plays a non-looping effect from its first frame, then removes it.
-// Each needs its own URL: browsers share one animation clock per GIF URL,
-// so reusing it would start the effect partway through.
-let effectId = 0;
 function playEffect(item, parent, x, y, s, ms, zIndex) {
-  const { el, img } = makeSprite(item, `${item.src}?${++effectId}`);
+  const { el, img } = makeSprite(item, freshUrl(item.src));
   el.style.zIndex = zIndex;
   place(el, item.box, x, y, s);
   parent.append(el);
@@ -605,8 +613,8 @@ function popSeal(seal) {
 function spawnBoss() {
   const target = makeSprite(TARGET, TARGET.src).el;
   stage.append(target);
-  // Its own URL so the GIF starts from frame 0 here, rather than wherever the start screen's copy had got to.
-  const { el, img } = makeSprite(BOSS, `${BOSS.src}?boss`);
+  // Starts from frame 0 here, rather than wherever the start screen's copy had got to.
+  const { el, img } = makeSprite(BOSS, freshUrl(BOSS.src));
   stage.append(el);
   const spawned = { el, target, x: 0, y: 0, drop: 0, hits: 0, dead: false, gifStart: null };
   img.onload = () => { spawned.gifStart = performance.now(); };
@@ -749,7 +757,7 @@ function showGameOver() {
 
   // Its own URL each time, so the GIF plays from its first frame.
   function showSplat(onDone) {
-    const sprite = makeSprite(LOSS_SPLAT, `${LOSS_SPLAT.src}?${++effectId}`);
+    const sprite = makeSprite(LOSS_SPLAT, freshUrl(LOSS_SPLAT.src));
     splat = sprite.el;
     screen.append(splat); // in front of the hive
     placeSplat();
@@ -832,8 +840,8 @@ try {
 } catch { /* storage blocked: stay on the start screen */ }
 
 // Loading screen: dots and pictures cycle until the art is ready. A short minimum keeps it from
-// flashing past on a fast load, and the limit means a slow or failed file can never leave it stuck.
-const LOADING = { stepMs: 350, minMs: 1200, maxMs: 20000 };
+// flashing past on a fast load, and the two-minute limit means a stalled file can't leave it stuck.
+const LOADING = { stepMs: 350, stepsPerPicture: 4, minMs: 1200, maxMs: 120000 };
 const loadingScreen = document.getElementById('loading');
 const loadingText = document.getElementById('loading-text');
 const loadingArt = [...loadingScreen.querySelectorAll('img')];
@@ -841,22 +849,32 @@ let loadingStep = 0;
 const loadingTimer = setInterval(() => {
   loadingStep++;
   loadingText.textContent = 'loading' + '.'.repeat(loadingStep % 3 + 1);
-  loadingArt.forEach((img, i) => { img.hidden = i !== loadingStep % loadingArt.length; });
+  const picture = Math.floor(loadingStep / LOADING.stepsPerPicture) % loadingArt.length;
+  loadingArt.forEach((img, i) => { img.hidden = i !== picture; });
 }, LOADING.stepMs);
 
 function loadArt(src) {
-  return new Promise(done => {
-    const img = new Image();
-    img.onload = img.onerror = done;
-    img.src = artUrl(src);
-  });
+  return fetch(artUrl(src))
+    .then(response => {
+      if (!response.ok) throw new Error(response.statusText);
+      return response.blob();
+    })
+    .then(blob => {
+      artBlobs.set(src, blob);
+      artUrls.set(src, URL.createObjectURL(blob));
+    })
+    .catch(() => new Promise(done => { // fetch isn't allowed when the page is opened as a local file
+      const img = new Image();
+      img.onload = img.onerror = done;
+      img.src = artUrl(src);
+    }));
 }
 
 function backgroundReady() {
   const video = document.getElementById('bg');
-  if (video.readyState >= 3) return Promise.resolve();
+  if (video.readyState >= 4) return Promise.resolve();
   return new Promise(done => {
-    video.addEventListener('canplay', done, { once: true });
+    video.addEventListener('canplaythrough', done, { once: true });
     video.addEventListener('error', done, { once: true });
   });
 }
